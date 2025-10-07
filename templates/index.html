@@ -15,6 +15,15 @@
         </header>
         
         <div class="main-content">
+            <!-- Camera Feed -->
+            <div class="camera-container">
+                <video id="video" autoplay playsinline></video>
+                <canvas id="canvas" style="display: none;"></canvas>
+                <div class="camera-overlay">
+                    <span class="live-badge">🔴 LIVE</span>
+                </div>
+            </div>
+            
             <!-- Detection Status Indicator -->
             <div class="detection-status">
                 <div id="detection-indicator" class="indicator red">

@@ -1,7 +1,9 @@
 from flask import Flask, render_template, jsonify, request
 import cv2
-import threading
+import numpy as np
 import time
+import io
+from PIL import Image
 
 app = Flask(__name__)
 
@@ -12,15 +14,16 @@ total_detections = 0
 energy_saved = 0.0
 last_detection_time = time.time()
 detection_running = False
-camera_available = False
-
-# Thread and camera objects
-detection_thread = None
-cap = None
+last_human_state = False
 
 # Constants for energy calculation
 POWER_CONSUMPTION = 10  # Watts (typical LED bulb)
 ENERGY_RATE_PER_SECOND = POWER_CONSUMPTION / 3600  # Watt-hours per second
+
+# Load Haar Cascade classifiers once at startup
+face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+upper_body_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_upperbody.xml')
+full_body_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_fullbody.xml')
 
 def detect_humans():
     """Background thread function for human detection"""
@@ -141,13 +144,94 @@ def status():
         'human_count': human_count,
         'energy_saved': round(energy_saved, 3),
         'detection_running': detection_running,
-        'camera_available': camera_available
+        'camera_available': True  # Frontend handles camera
     })
+
+@app.route('/detect', methods=['POST'])
+def detect():
+    """Detect humans in uploaded image from frontend camera"""
+    global human_detected, human_count, energy_saved, last_detection_time, last_human_state
+    
+    try:
+        # Get image from request
+        if 'image' not in request.files:
+            return jsonify({'error': 'No image provided'}), 400
+        
+        file = request.files['image']
+        
+        # Read image
+        image_bytes = file.read()
+        nparr = np.frombuffer(image_bytes, np.uint8)
+        frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        
+        if frame is None:
+            return jsonify({'error': 'Could not decode image'}), 400
+        
+        # Convert to grayscale for detection
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        
+        # Detect faces, upper bodies, and full bodies
+        faces = face_cascade.detectMultiScale(
+            gray, 
+            scaleFactor=1.1, 
+            minNeighbors=5, 
+            minSize=(30, 30),
+            flags=cv2.CASCADE_SCALE_IMAGE
+        )
+        
+        upper_bodies = upper_body_cascade.detectMultiScale(
+            gray, 
+            scaleFactor=1.1, 
+            minNeighbors=3, 
+            minSize=(50, 50)
+        )
+        
+        full_bodies = full_body_cascade.detectMultiScale(
+            gray,
+            scaleFactor=1.1,
+            minNeighbors=3,
+            minSize=(80, 80)
+        )
+        
+        current_time = time.time()
+        detected_now = len(faces) > 0 or len(upper_bodies) > 0 or len(full_bodies) > 0
+        
+        # Update detection state
+        if detected_now:
+            if not last_human_state:
+                human_count += 1
+                last_human_state = True
+                print(f"✅ Human detected! Count: {human_count} (Faces: {len(faces)}, Upper: {len(upper_bodies)}, Full: {len(full_bodies)})")
+            human_detected = True
+            last_detection_time = current_time
+        else:
+            if last_human_state:
+                last_human_state = False
+                print("❌ Human no longer detected")
+            human_detected = False
+            
+            # Calculate energy saved when no human is detected
+            time_elapsed = current_time - last_detection_time
+            energy_saved += time_elapsed * ENERGY_RATE_PER_SECOND
+            last_detection_time = current_time
+        
+        return jsonify({
+            'human_detected': human_detected,
+            'faces': len(faces),
+            'upper_bodies': len(upper_bodies),
+            'full_bodies': len(full_bodies),
+            'human_count': human_count,
+            'energy_saved': round(energy_saved, 3)
+        })
+        
+    except Exception as e:
+        print(f"Error in detection: {e}")
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/toggle', methods=['POST'])
 def toggle_detection():
     """Start or stop detection"""
-    global detection_running, detection_thread, human_detected, last_detection_time
+    global detection_running, human_detected, last_detection_time
     
     data = request.get_json()
     should_start = data.get('start', False)
@@ -155,14 +239,10 @@ def toggle_detection():
     if should_start and not detection_running:
         detection_running = True
         last_detection_time = time.time()
-        detection_thread = threading.Thread(target=detect_humans, daemon=True)
-        detection_thread.start()
         return jsonify({'status': 'started', 'message': 'Detection started'})
     elif not should_start and detection_running:
         detection_running = False
         human_detected = False
-        if cap is not None:
-            cap.release()
         return jsonify({'status': 'stopped', 'message': 'Detection stopped'})
     
     return jsonify({'status': 'unchanged', 'message': 'No change in detection state'})

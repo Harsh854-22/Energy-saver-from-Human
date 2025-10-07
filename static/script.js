@@ -3,6 +3,7 @@ let detectionActive = false;
 let statusInterval = null;
 const UPDATE_INTERVAL = 500; // Update every 500ms
 const CO2_PER_KWH = 0.5; // kg CO2 per kWh (approximate)
+let stream = null;
 
 // DOM Elements
 const detectionIndicator = document.getElementById('detection-indicator');
@@ -13,10 +14,15 @@ const co2SavedElement = document.getElementById('co2-saved');
 const cameraStateElement = document.getElementById('camera-state');
 const toggleBtn = document.getElementById('toggle-btn');
 const resetBtn = document.getElementById('reset-btn');
+const video = document.getElementById('video');
+const canvas = document.getElementById('canvas');
 
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', function() {
     console.log('Human Detection System Initialized');
+    
+    // Initialize camera immediately
+    initCamera();
     
     // Initial status check
     updateStatus();
@@ -41,6 +47,51 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 });
+
+/**
+ * Initialize camera feed
+ */
+async function initCamera() {
+    try {
+        console.log('Requesting camera access...');
+        cameraStateElement.textContent = 'Requesting access...';
+        cameraStateElement.style.color = '#ffa502';
+        
+        // Request camera access
+        stream = await navigator.mediaDevices.getUserMedia({ 
+            video: { 
+                width: { ideal: 1280 },
+                height: { ideal: 720 },
+                facingMode: 'user'
+            },
+            audio: false 
+        });
+        
+        // Set video source
+        video.srcObject = stream;
+        video.play();
+        
+        console.log('Camera initialized successfully');
+        cameraStateElement.textContent = '✅ Connected';
+        cameraStateElement.style.color = '#26de81';
+        
+    } catch (error) {
+        console.error('Error accessing camera:', error);
+        cameraStateElement.textContent = '❌ Camera Error';
+        cameraStateElement.style.color = '#ff4757';
+        
+        let errorMessage = 'Could not access camera. ';
+        if (error.name === 'NotAllowedError') {
+            errorMessage += 'Please allow camera permissions.';
+        } else if (error.name === 'NotFoundError') {
+            errorMessage += 'No camera found on this device.';
+        } else {
+            errorMessage += error.message;
+        }
+        
+        showNotification(errorMessage, 'error');
+    }
+}
 
 /**
  * Fetch and update status from backend
@@ -76,8 +127,8 @@ function updateStatus() {
             const co2Value = (energyValue / 1000) * CO2_PER_KWH * 1000; // Convert to grams
             co2SavedElement.textContent = co2Value.toFixed(3);
             
-            // Update camera status
-            if (data.camera_available !== undefined) {
+            // Update camera status - but don't override our local camera status
+            if (!stream && data.camera_available !== undefined) {
                 cameraStateElement.textContent = data.camera_available ? 
                     '✅ Connected' : '⚠️ Simulation Mode';
                 cameraStateElement.style.color = data.camera_available ? '#26de81' : '#ffa502';
@@ -88,6 +139,43 @@ function updateStatus() {
             cameraStateElement.textContent = '❌ Connection Error';
             cameraStateElement.style.color = '#ff4757';
         });
+}
+
+/**
+ * Capture frame and send to backend for detection
+ */
+function captureAndDetect() {
+    if (!video.videoWidth || !video.videoHeight) {
+        console.log('Video not ready yet');
+        return;
+    }
+    
+    // Set canvas dimensions to match video
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    
+    // Draw current video frame to canvas
+    const context = canvas.getContext('2d');
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    
+    // Convert canvas to blob and send to backend
+    canvas.toBlob((blob) => {
+        const formData = new FormData();
+        formData.append('image', blob, 'frame.jpg');
+        
+        fetch('/detect', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            console.log('Detection result:', data);
+            // Status will be updated by the regular updateStatus call
+        })
+        .catch(error => {
+            console.error('Error in detection:', error);
+        });
+    }, 'image/jpeg', 0.8);
 }
 
 /**
@@ -112,7 +200,15 @@ function toggleDetection() {
         
         if (data.status === 'started') {
             detectionActive = true;
-            statusInterval = setInterval(updateStatus, UPDATE_INTERVAL);
+            // Update status regularly
+            statusInterval = setInterval(() => {
+                updateStatus();
+                // Also capture and send frames if camera is available
+                if (stream) {
+                    captureAndDetect();
+                }
+            }, UPDATE_INTERVAL);
+            
             toggleBtn.innerHTML = '<span class="btn-icon">⏸️</span><span class="btn-text">Stop Detection</span>';
             toggleBtn.classList.remove('btn-primary');
             toggleBtn.classList.add('btn-secondary');
