@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Automatic Bulb - Human Detection System</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💡</text></svg>">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>💡 Automatic Bulb System</h1>
+            <p class="subtitle">Smart Energy-Saving Human Detection</p>
+        </header>
+        
+        <div class="main-content">
+            <!-- Detection Status Indicator -->
+            <div class="detection-status">
+                <div id="detection-indicator" class="indicator red">
+                    <div class="bulb-icon">💡</div>
+                    <span id="status-text">No Human Detected</span>
+                    <div class="pulse-ring"></div>
+                </div>
+                <p id="camera-status" class="camera-status">Camera Status: <span id="camera-state">Checking...</span></p>
+            </div>
+            
+            <!-- Statistics Dashboard -->
+            <div class="stats">
+                <div class="stat-box">
+                    <div class="stat-icon">👥</div>
+                    <h3>Human Counter</h3>
+                    <p id="human-count" class="stat-value">0</p>
+                    <span class="stat-label">Total Detections</span>
+                </div>
+                
+                <div class="stat-box">
+                    <div class="stat-icon">⚡</div>
+                    <h3>Energy Saved</h3>
+                    <p id="energy-saved" class="stat-value">0.000</p>
+                    <span class="stat-label">Watt-hours (Wh)</span>
+                </div>
+
+                <div class="stat-box">
+                    <div class="stat-icon">🌱</div>
+                    <h3>CO₂ Reduced</h3>
+                    <p id="co2-saved" class="stat-value">0.000</p>
+                    <span class="stat-label">grams</span>
+                </div>
+            </div>
+            
+            <!-- Control Buttons -->
+            <div class="controls">
+                <button id="toggle-btn" class="btn btn-primary">
+                    <span class="btn-icon">▶️</span>
+                    <span class="btn-text">Start Detection</span>
+                </button>
+                <button id="reset-btn" class="btn btn-secondary">
+                    <span class="btn-icon">🔄</span>
+                    <span class="btn-text">Reset Counters</span>
+                </button>
+            </div>
+
+            <!-- Info Panel -->
+            <div class="info-panel">
+                <h3>📊 How It Works</h3>
+                <div class="info-grid">
+                    <div class="info-item">
+                        <span class="info-color green-bg">🟢 GREEN</span>
+                        <p>Human Detected - Light ON</p>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-color red-bg">🔴 RED</span>
+                        <p>No Human - Light OFF (Saving Energy)</p>
+                    </div>
+                </div>
+                <p class="info-note">💡 The system automatically turns the light on/off based on human presence, saving energy when the room is empty!</p>
+            </div>
+        </div>
+
+        <footer>
+            <p>Built with ❤️ using Python Flask, OpenCV & JavaScript</p>
+        </footer>
+    </div>
+    
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
